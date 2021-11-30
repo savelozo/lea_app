@@ -1,6 +1,6 @@
 from .models import Curso, Arte, Alumne
 from .serializers import CursoSerializer, ArteSerializer, AlumneSerializer
-from .functions import make_distribution, create_assignment_override, peer_review_distribution
+from .functions import make_distribution, create_assignment_override, peer_review_distribution, update_list
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -13,9 +13,7 @@ API_URL = "https://cursos.canvas.uc.cl"
 
 API_KEY = "8976~0g11w22i7QTuQPE2nJKKYrgMNzsX4OPGa5TifdyGbWLXz2te5aPQ5SD5WgQeGpVM"
 
-CANVAS = Canvas(API_URL, API_KEY)
-
-class PeerListCreate(generics.ListCreateAPIView):
+class CourseListCreate(generics.ListCreateAPIView):
     queryset = Curso.objects.all()
     serializer_class = CursoSerializer
 
@@ -29,12 +27,15 @@ class StudentListCreate(generics.ListCreateAPIView):
 
 @api_view(('POST',))
 def MakeAssigns(request):
+    CANVAS = Canvas(API_URL, API_KEY)
     body_request = json.loads(request.body)
     print(body_request)
 
     if "course_id" in body_request:    
         course = Curso.objects.get(id_canvas=body_request['course_id'])
+        print("Obteniendo curso...")
         canvas_course = CANVAS.get_course(course.id_canvas)
+        print("Curso obtenido...")
         students_canvas = canvas_course.get_users(enrollment_type=['student'])
         assignment_id = body_request["assignment_id"]
         date = datetime(body_request["year"], 
@@ -42,15 +43,9 @@ def MakeAssigns(request):
                         body_request["day"], 
                         body_request["hour"], 
                         body_request["minutes"])
-        students = list()
-
-        #Actualización de alumnes en la base de datos
-        for student in students_canvas:
-            students.append(student)
-            _student = Alumne.objects.filter(canvas_id=student.id)
-            if not len(_student):
-                #Creación de alumne que no está en la base de datos
-                Alumne.objects.create(nombre=student.name, curso=course, canvas_id=student.id)
+        
+        print("Actualizando lista de alumnos...")
+        students = update_list(students_canvas, course)
         
         if body_request["title_task"] == "Repartir ensayo":
             art = course.artes.filter(nombre__contains=body_request['art'])
@@ -58,7 +53,8 @@ def MakeAssigns(request):
                 #quan_art permite saber si debemos haber una repartición aleatorio o simplemente respetar los grupos ya establecidos.
                 quan_art = course.artes.count()
                 art = Arte.objects.filter(nombre=body_request["art"])[0]
-                make_distribution(students, art, canvas_course, assignment_id, quan_art, date)
+                print("Repartiendo ensayo...")
+                make_distribution(students, art, canvas_course, assignment_id, quan_art, date, CANVAS)
                 course.artes.add(art)    
             else:
                 print("Disciplina ya repartida")

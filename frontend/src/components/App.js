@@ -7,6 +7,9 @@ import DropdownButton from 'react-bootstrap/DropdownButton';
 import Dropdown from 'react-bootstrap/Dropdown';
 import NumberPicker from "react-widgets/NumberPicker";
 import Button from 'react-bootstrap/Button';
+import DateTimePicker from 'react-datetime-picker';
+
+import "../css/Apps.css"
 
 class App extends Component {
   constructor(props) {
@@ -25,14 +28,16 @@ class App extends Component {
       minutes: 59,
       title_task: "Elija acción a realizar",
       assignment_id: 139677,
+      date: new Date()
     };
     this.setCourse = this.setCourse.bind(this);
     this.makeAssigns = this.makeAssigns.bind(this);
+    this.setDate = this.setDate.bind(this)
   }
 
   componentDidMount() {
 
-    fetch("api/peer_review")
+    fetch("api/courses")
       .then(response => {
         if (response.status > 400) {
           return this.setState(() => {
@@ -87,6 +92,19 @@ class App extends Component {
     )
   }
 
+  setDate(date) {
+    this.setState(
+      {
+        'date': date,
+        'hour': date.getHours(),
+        'minutes': date.getMinutes(),
+        'year': date.getFullYear(),
+        'month': date.getMonth() + 1,
+        'day': date.getDate()
+      }
+    )
+  }
+
   
   makeAssigns() {
     const requestOptions = {
@@ -124,7 +142,7 @@ class App extends Component {
   render() {
     return (
       <Container>
-        <Row md={4}>
+        <Row md={3}>
           <Col></Col>
           <Col xs={6}>  
             <DropdownButton id="dropdown-courses" title={this.state.title}>
@@ -137,7 +155,7 @@ class App extends Component {
           </Col>
           <Col></Col>
         </Row>
-        <Row md={4}>
+        <Row md={3}>
           <Col></Col>
           <Col xs={6}>  
             <DropdownButton id="dropdown-arts" title={this.state.art}>
@@ -150,39 +168,7 @@ class App extends Component {
           </Col>
           <Col></Col>      
         </Row>
-        <Row md={4}>
-          <Col xs={6}>
-            <label>Elige el día</label>
-            <NumberPicker defaultValue={this.state.day} onChange={day => this.setState({"day": day})}/>
-          </Col>
-          <Col xs={6}>
-            <label>Elige el mes</label>
-            <NumberPicker defaultValue={this.state.month} onChange={month => this.setState({"month": month})}/>
-          </Col>
-          <Col xs={6}>          
-            <label>Elige el año</label>
-            <NumberPicker defaultValue={this.state.year} onChange={year => this.setState({"year": year})}/>
-          </Col>
-        </Row>
-        <Row md={4}>
-          <Col xs={6}>
-            <label>Elige la hora</label>
-            <NumberPicker defaultValue={this.state.hour} onChange={hour => this.setState({"hour": hour})}/>
-          </Col>
-          <Col xs={6}>
-            <label>Elige los minutos</label>
-            <NumberPicker defaultValue={this.state.minutes} onChange={minutes => this.setState({"minutes": minutes})}/>
-          </Col>
-        </Row>
-        <Row md={4}>
-          <Col></Col>
-          <Col xs={6}>
-            <label>Ingresa el ID de la tarea:</label>
-            <NumberPicker defaultValue={this.state.assignment_id} onChange={assignment_id => this.setState({"assignment_id": assignment_id})}/>
-          </Col>
-          <Col></Col>
-        </Row>
-        <Row md={4}>
+        <Row md={3}>
           <Col></Col>
           <Col>
             <DropdownButton id="dropdown-feature" title={this.state.title_task}>
@@ -197,7 +183,29 @@ class App extends Component {
             </DropdownButton>
           </Col>
         </Row>
-        <Row md={4}>
+        <Row md={3}>
+          <Col></Col>
+          <Col xs={6}>
+            <label className="PickerIDLabel">Ingresa el ID de la tarea:</label>
+            <NumberPicker defaultValue={this.state.assignment_id} onChange={assignment_id => this.setState({"assignment_id": assignment_id})}/>
+          </Col>
+          <Col></Col>
+        </Row>
+        <Row md={3} className="thirdRow">
+          <Col xs={6}/>
+          <Col xs={6}>
+            <label className="PickerLabel">Elige la fecha de entrega</label>
+            <div>
+              <DateTimePicker
+                onChange={this.setDate}
+                value={this.state.date}
+                format="dd-MM-y  HH:mm "
+                clearIcon={null}
+              />
+            </div>          </Col>
+            <Col xs={6}/>
+        </Row>
+        <Row md={3}>
           <Col></Col>
           <Col>
             <Button variant="warning" onClick={this.makeAssigns}>Confirmar elección</Button>

@@ -1,8 +1,30 @@
 from .models import Alumne, EnsayoAlumneRelation, Curso, ArtAlumneRelation
 import random
-from datetime import datetime
 
-def make_distribution(students, art, canvas_course, assignment_id, int_arts_assigned, date):
+def update_list(students_canvas, course):
+    #Actualización de alumnes en la base de datos. Retorna una lista con los estudiantes vigentes del curso.
+    
+    students = list()
+    active_students_ids = list()
+
+    for student in students_canvas:
+        students.append(student)
+        active_students_ids.append(student.id)
+        _student = Alumne.objects.filter(canvas_id=student.id)
+        if not len(_student):
+            #Creación de alumne que no está en la base de datos
+            Alumne.objects.create(nombre=student.name, curso=course, canvas_id=student.id)
+    
+    all_students = Alumne.objects.filter(curso=course)
+
+    for student in all_students:
+        if student.canvas_id not in active_students_ids:            
+            print("Esta persona botó el ramo: {}".format(student.nombre))
+            student.delete()
+    
+    return students
+
+def make_distribution(students, art, canvas_course, assignment_id, int_arts_assigned, date, CANVAS_API):
     #Generación de grupos para peer review
     #First group son las personas que deben realizar el ensayo
 
@@ -12,9 +34,6 @@ def make_distribution(students, art, canvas_course, assignment_id, int_arts_assi
         print("Realizando repartición aleatorio. Armando grupos...")
         nsample = len(students) // 2
         first_group = random.sample(students, nsample)
-
-        #BORRAR LA LÍNEA DE ABAJO!
-        #EnsayoAlumneRelation.objects.all().delete()
 
         for student in students:
             student_bd = Alumne.objects.get(canvas_id=student.id)
@@ -53,9 +72,9 @@ def make_distribution(students, art, canvas_course, assignment_id, int_arts_assi
                 student_bd.save()
                 ArtAlumneRelation.objects.create(curso=course, alumne=student_bd, arte=art, group=2)
                     
-    create_assignment_override(first_group, canvas_course, art, assignment_id, date)
+    create_assignment_override(first_group, canvas_course, art, assignment_id, date, CANVAS_API)
 
-def create_assignment_override(students, course, art, assignment_id, date):
+def create_assignment_override(students, canvas_course, art, assignment_id, date, CANVAS_API):
     #Asigna las tareas a los estudiantes del grupo 1
     list_students_id = list()
 
@@ -64,14 +83,14 @@ def create_assignment_override(students, course, art, assignment_id, date):
 
     users_ids = {"student_ids": list_students_id}
     print("Assignment ID: {}".format(assignment_id))
-    assignment = course.get_assignment(assignment_id)
+    assignment = canvas_course.get_assignment(assignment_id)
     assignment.create_override(assignment_override=users_ids)
     assignment.edit(assignment={ "turnitin_enabled" : True,
                                  "due_at": date,
                                  "lock_at": date,
                                  "only_visible_to_overrides": True})
     print("Ensayo asignado")
-    #send_message(art, curso.semestre)
+    send_message(canvas_course, art, CANVAS_API)
 
 def peer_review_distribution(canvas_course, art, assignment_id, date, max_reviews=2):
     #https://canvas.instructure.com/doc/api/submissions.html#method.submissions_api.index
@@ -84,16 +103,8 @@ def peer_review_distribution(canvas_course, art, assignment_id, date, max_review
     for submission in submissions:
         list_submissions.append(submission)
 
-    # students_canvas = canvas_course.get_users(enrollment_type=['student'])
-    # for student in students_canvas:
-    #     if student.name in students_group_2:
-    #         student_bd = Alumne.objects.get(nombre=student.name)
-    #         student_bd.last_group=2
-    #         student_bd.save()
-
-    reviewers = Alumne.objects.filter(last_group=2)
     #reviewers_2 debería reemplazar a reviewers
-    reviewers_2 = ArtAlumneRelation.objects.filter(curso=course, arte=art, group=2)
+    reviewers_relations = ArtAlumneRelation.objects.filter(curso=course, arte=art, group=2)
     
     set_1 = list()
     set_2 = list()
@@ -103,9 +114,10 @@ def peer_review_distribution(canvas_course, art, assignment_id, date, max_review
 
     for i in range(max_reviews):
 
-        for student in reviewers:
+        for relation in reviewers_relations:
 
             random_distribution =  True
+            student = relation.alumne
 
             if len(list_submissions) > 0:
                 random_subm = list_submissions.pop(random.randrange(len(list_submissions)))
@@ -117,10 +129,9 @@ def peer_review_distribution(canvas_course, art, assignment_id, date, max_review
                 random_distribution = False
 
             if random_distribution:
-                try:
-                    
-                    reviewed = canvas_course.get_user(random_subm.user_id).name
+                try:                  
                     reviewed_bd = Alumne.objects.get(canvas_id=random_subm.user_id)
+                    reviewed = reviewed_bd.nombre
                     
                     if reviewed not in reviews.keys():                        
                         reviews[reviewed] = [student]                        
@@ -159,25 +170,52 @@ def create_peer_review(canvas_course, random_subm, student, date, url, art, revi
     user_id = {"student_ids":[student.canvas_id]}
     assignment = { "name": ("Peer review {}").format(art.nombre),
                     "submission_types": ["online_text_entry"],
-                    "description": "Revisa la tarea de tu compañere en el siguiente formulario:  https://forms.gle/fWLeCzA2WE73mbxu9.\nRecuerda ingresar con tu correo UC.\nEl ensayo a revisar podrás encontrarlo en el siguiente link (ojo! este link debes pegarlo en el form que te mandamos): {}\nAdemás de llenar el formulario, copia y pega cada una de las secciones en el cuadro de respuesta de canvas :) (solo para tener un respaldo)".format(random_subm.attachments[0]['url']),
+                    "description": "Revisa la tarea de tu compañere en el siguiente formulario:  https://forms.gle/ASx6dYpY6Y3ykHLU6.\n\nRecuerda ingresar con tu correo UC.\n\nEl ensayo a revisar podrás encontrarlo en el siguiente link (ojo! este link debes pegarlo en el form que te mandamos): {}\n".format(random_subm.attachments[0]['url']),
                     'due_at': date,
                     'lock_at': date,
                     'assignment_group_id': group_id,
-                    "only_visible_to_overrides": True }
+                    "only_visible_to_overrides": True,
+                    'published': True }
 
     new_assignment = canvas_course.create_assignment(assignment=assignment)
     new_assignment.create_override(assignment_override=user_id)
-    new_assignment.edit(assignment={'published': True})
 
-    try:
-        essay_relation = EnsayoAlumneRelation.objects.filter(curso=course, corregido__canvas_id=reviewed.canvas_id, arte__nombre=art.nombre)
-        has_reviewed = True
-    except:
+    essay_relations = EnsayoAlumneRelation.objects.filter(curso=course, corregido__canvas_id=reviewed.canvas_id, arte__nombre=art.nombre)
+
+    if not essay_relations:
         essay_relation = EnsayoAlumneRelation.objects.create(curso=course, corregido=reviewed, arte=art, url=random_subm.attachments[0]['url'])
         essay_relation.save()
         has_reviewed = False
-
-    if has_reviewed:
-        essay_relation.corrector_id_1 = student.canvas_id
     else:
-        essay_relation.corrector_id_2 = student.canvas_id
+        essay_relation = EnsayoAlumneRelation.objects.get(curso=course, corregido__canvas_id=reviewed.canvas_id, arte__nombre=art.nombre)
+        has_reviewed = True
+
+    if not has_reviewed:
+        essay_relation.corrector_id_1=student.canvas_id
+        essay_relation.save()
+    else:
+        essay_relation.corrector_id_2=student.canvas_id
+        essay_relation.save()
+
+
+def send_message(canvas_course, art, CANVAS_API):
+    #Envía mensaje de cada grupo de manera diferenciada.
+
+    course = Curso.objects.get(id_canvas=canvas_course.id)
+    group_1 = ArtAlumneRelation.objects.filter(curso=course, arte=art, group=1)
+    group_2 = ArtAlumneRelation.objects.filter(curso=course, arte=art, group=2)
+    reviewers_id = list()
+    revieweds_id = list()
+
+    for relation in group_1:
+        revieweds_id.append(relation.alumne.canvas_id)
+
+    for relation in group_2:
+        reviewers_id.append(relation.alumne.canvas_id)
+        
+
+    msg_revisados = ("Estimades;\n\nLes escribo para informar que para la entrega de {} deberán generar un informe escrito. La asignación ya está realizada en la plataforma CANVAS.\n\n Cualquier duda no duden en escribirme, Sebastián.").format(art.nombre)
+    CANVAS_API.create_conversation(revieweds_id, msg_revisados, subject="Entrega {}".format(art.nombre))
+
+    msg_revisores = ("Estimades;\n\nLes escribo para informar que para la entrega de {} deberán revisar 2 trabajos realizados por algunes de sus compañeres. La asignación se realizará la próxima semana en la plataforma CANVAS.\n\n Cualquier duda no dudes en escribirme, Sebastián.").format(art.nombre)
+    CANVAS_API.create_conversation(reviewers_id, msg_revisores, subject="Entrega {}".format(art.nombre))
